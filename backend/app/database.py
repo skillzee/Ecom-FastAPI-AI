@@ -5,6 +5,7 @@ from sqlmodel import create_engine, SQLModel, Session
 # Import table models before create_all so their definitions are registered.
 from app.models.product import Product
 from app.models.user import User
+from app.models.cart import CartItem
 
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "ecommerce.db"
