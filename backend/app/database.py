@@ -2,6 +2,10 @@ from pathlib import Path
 
 from sqlmodel import create_engine, SQLModel, Session
 
+# Import table models before create_all so their definitions are registered.
+from app.models.product import Product
+from app.models.user import User
+
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "ecommerce.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"

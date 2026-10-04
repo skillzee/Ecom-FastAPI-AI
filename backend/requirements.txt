@@ -4,3 +4,6 @@ sqlmodel
 python-dotenv
 langchain-openai
 langchain
+pwdlib[argon2]
+email-validator
+PyJWT
