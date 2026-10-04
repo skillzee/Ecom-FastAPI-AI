@@ -4,12 +4,21 @@ Activate the project virtual environment, then run from `backend`:
 
 ```powershell
 python -m pip install -r requirements.txt
-python scripts/setup_auth.py
 python -m uvicorn app.main:app --reload
 ```
 
-The setup script generates a random JWT signing secret in the root `.env`.
-It preserves an existing nonblank secret and never prints credentials.
+Configuration lives in the root `.env`. `core/config.py` loads it with
+`load_dotenv()` and reads named values using `os.getenv()`.
+There are no settings classes or setup scripts.
+
+Your existing `JWT_SECRET_KEY` can stay as it is. For a fresh checkout, generate
+a signing secret once, then paste the output into `.env` as `JWT_SECRET_KEY`:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Keep the key private and stable so tokens remain valid across server restarts.
 Restart the server after changing configuration. Missing or short signing
 secrets stop startup with a configuration error.
 
@@ -44,7 +53,7 @@ endpoints are future steps. Access tokens expire naturally after 30 minutes.
 - `services/users.py`: registration and credential checks against SQLite.
 - `core/dependencies.py`: extract a bearer token and resolve the current user.
 - `routers/auth.py` and `routers/users.py`: HTTP status codes and endpoints.
-- `core/config.py`: separate cached auth and AI configuration.
+- `core/config.py`: environment values read using `os.getenv()` and token lifetime.
 
 ## Tests
 

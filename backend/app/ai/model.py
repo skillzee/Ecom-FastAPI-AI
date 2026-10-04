@@ -2,17 +2,18 @@ from functools import lru_cache
 
 from langchain_openai import ChatOpenAI
 
-from app.core.config import get_settings
+from app.core import config
 
 
 @lru_cache
 def get_chat_model() -> ChatOpenAI:
-    settings = get_settings()
+    if not all((config.OPENAI_API_KEY, config.OPENAI_BASE_URL, config.OPENAI_MODEL)):
+        raise ValueError("Set OPENAI_API_KEY, OPENAI_BASE_URL, and OPENAI_MODEL in .env")
 
     return ChatOpenAI(
-        model=settings.openai_model,
-        api_key=settings.openai_api_key,
-        base_url=settings.openai_base_url,
+        model=config.OPENAI_MODEL,
+        api_key=config.OPENAI_API_KEY,
+        base_url=config.OPENAI_BASE_URL,
         timeout=30,
         max_retries=1,
     )

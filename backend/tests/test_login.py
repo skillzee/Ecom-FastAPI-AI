@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-import os
 import unittest
 from unittest.mock import patch
 
@@ -8,7 +7,6 @@ import jwt
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.core.config import get_auth_settings
 from app.database import get_session
 from app.main import app
 from app.models.user import User
@@ -17,9 +15,8 @@ from app.models.user import User
 class LoginTests(unittest.TestCase):
     def setUp(self):
         self.secret = "test-only-secret-key-" + "x" * 48
-        self.env_patch = patch.dict(os.environ, {"JWT_SECRET_KEY": self.secret})
-        self.env_patch.start()
-        get_auth_settings.cache_clear()
+        self.secret_patch = patch("app.core.config.JWT_SECRET_KEY", self.secret)
+        self.secret_patch.start()
         self.engine = create_engine(
             "sqlite://",
             connect_args={"check_same_thread": False},
@@ -49,8 +46,7 @@ class LoginTests(unittest.TestCase):
         self.client.__exit__(None, None, None)
         app.dependency_overrides.pop(get_session, None)
         self.startup_patch.stop()
-        self.env_patch.stop()
-        get_auth_settings.cache_clear()
+        self.secret_patch.stop()
         self.engine.dispose()
 
     def login(self):
@@ -149,6 +145,14 @@ class LoginTests(unittest.TestCase):
             schema["components"]["securitySchemes"]["HTTPBearer"]["scheme"], "bearer"
         )
         self.assertEqual(schema["paths"]["/users/me"]["get"]["security"], [{"HTTPBearer": []}])
+
+    def test_startup_rejects_missing_or_short_signing_secret(self):
+        for secret in ["", "short", " " * 40]:
+            with self.subTest(secret_length=len(secret)):
+                with patch("app.core.config.JWT_SECRET_KEY", secret):
+                    with self.assertRaisesRegex(ValueError, "JWT_SECRET_KEY"):
+                        with TestClient(app):
+                            pass
 
 
 if __name__ == "__main__":

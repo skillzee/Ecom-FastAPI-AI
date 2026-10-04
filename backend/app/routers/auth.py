@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
 from app.database import get_session
-from app.core.config import get_auth_settings
+from app.core import config
 from app.core.security import create_access_token
 from app.schemas.auth import TokenResponse
 from app.schemas.user import UserCreate, UserLogin, UserRead
@@ -40,10 +40,9 @@ def login(user_data: UserLogin, session: SessionDep, response: Response):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    settings = get_auth_settings()
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
     return TokenResponse(
         access_token=create_access_token(user.id),
-        expires_in=settings.access_token_expire_minutes * 60,
+        expires_in=config.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )

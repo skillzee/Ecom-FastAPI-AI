@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import create_db_and_tables
-from app.core.config import get_auth_settings
+from app.core import config
 from app.routers.health import router as health_router
 from app.routers.products import router as products_router
 from app.routers.chat import router as chat_router
@@ -19,7 +19,8 @@ logging.basicConfig(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_auth_settings()
+    if len(config.JWT_SECRET_KEY.strip().encode("utf-8")) < 32:
+        raise ValueError("Set JWT_SECRET_KEY in .env to a random secret of at least 32 bytes")
     create_db_and_tables()
     yield
 

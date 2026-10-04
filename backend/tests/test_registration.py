@@ -1,4 +1,3 @@
-import os
 import unittest
 from unittest.mock import patch
 
@@ -8,7 +7,6 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.core.security import password_hash
-from app.core.config import get_auth_settings
 from app.database import get_session
 from app.main import app
 from app.models.user import User
@@ -16,11 +14,10 @@ from app.models.user import User
 
 class RegistrationTests(unittest.TestCase):
     def setUp(self):
-        self.env_patch = patch.dict(
-            os.environ, {"JWT_SECRET_KEY": "registration-test-secret-" + "x" * 48}
+        self.secret_patch = patch(
+            "app.core.config.JWT_SECRET_KEY", "registration-test-secret-" + "x" * 48
         )
-        self.env_patch.start()
-        get_auth_settings.cache_clear()
+        self.secret_patch.start()
         # Every test gets its own database; the project's ecommerce.db is untouched.
         self.engine = create_engine(
             "sqlite://",
@@ -50,8 +47,7 @@ class RegistrationTests(unittest.TestCase):
         self.client.__exit__(None, None, None)
         app.dependency_overrides.pop(get_session, None)
         self.startup_patch.stop()
-        self.env_patch.stop()
-        get_auth_settings.cache_clear()
+        self.secret_patch.stop()
         self.engine.dispose()
 
     def test_registration_persists_hash_and_returns_only_public_fields(self):

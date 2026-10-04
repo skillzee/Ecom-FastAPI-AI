@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 from pwdlib import PasswordHash
 
-from app.core.config import get_auth_settings
+from app.core import config
 
 
 password_hash = PasswordHash.recommended()
@@ -21,21 +21,19 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(user_id: int) -> str:
-    settings = get_auth_settings()
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
         "iat": now,
-        "exp": now + timedelta(minutes=settings.access_token_expire_minutes),
+        "exp": now + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES),
     }
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, config.JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> int:
-    settings = get_auth_settings()
     payload = jwt.decode(
         token,
-        settings.jwt_secret_key,
+        config.JWT_SECRET_KEY,
         algorithms=[JWT_ALGORITHM],
         options={"require": ["sub", "iat", "exp"]},
     )
