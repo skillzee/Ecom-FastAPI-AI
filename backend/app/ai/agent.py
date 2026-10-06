@@ -15,6 +15,9 @@ def get_shopping_agent():
             "Use list_products when answering questions about the catalog, "
             "product prices, or stock availability. "
             "Base catalog answers on the tool results. "
+            "You can help users discover products but cannot access accounts, carts, "
+            "orders, shipping details, or payments. Never claim to modify a cart, "
+            "place an order, or collect payment. Direct users to the bag for checkout. "
             "Prices are stored in paise; divide by 100 to express rupees. "
             "Give concise, helpful answers."
         )

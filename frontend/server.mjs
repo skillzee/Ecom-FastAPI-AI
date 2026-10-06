@@ -42,7 +42,7 @@ export function createServer(apiTarget = 'http://127.0.0.1:8000') {
           method: req.method,
           headers,
           body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(url.pathname === '/api/chat' ? 50000 : 15000),
           redirect: 'manual',
         });
         const responseBody = Buffer.from(await upstream.arrayBuffer());

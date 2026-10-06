@@ -10,6 +10,11 @@ let busy = false;
 let authBusy = false;
 let toastTimer;
 let catalogLoaded = false;
+let checkoutDraft = null;
+let checkoutSubmission = null;
+let orderBusy = false;
+let chatBusy = false;
+let chatHistory = [];
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -37,11 +42,17 @@ function signOut() {
   setToken('');
   user = null;
   cart = { items: [], total_paise: 0 };
+  checkoutDraft = null;
+  checkoutSubmission = null;
+  $('#checkout-form').reset();
+  $('#orders-content').replaceChildren();
+  $('#checkout-review').replaceChildren();
+  for (const id of ['checkout-dialog', 'orders-dialog']) if ($(`#${id}`).open) $(`#${id}`).close();
   updateAccount();
   renderCart();
 }
 
-async function request(path, { method = 'GET', body, authenticated = false } = {}) {
+async function request(path, { method = 'GET', body, authenticated = false, timeout = 20000 } = {}) {
   const response = await fetch(`/api${path}`, {
     method,
     headers: {
@@ -49,7 +60,7 @@ async function request(path, { method = 'GET', body, authenticated = false } = {
       ...(authenticated && token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(timeout),
   });
   const data = response.status === 204 ? null : await response.json();
   if (!response.ok) {
@@ -61,7 +72,9 @@ async function request(path, { method = 'GET', body, authenticated = false } = {
     const detail = Array.isArray(data?.detail)
       ? data.detail.map((error) => `${error.loc?.at(-1) || 'Input'}: ${error.msg}`).join(' ')
       : data?.detail;
-    throw new Error(typeof detail === 'string' ? detail : 'Something went wrong. Please try again.');
+    const error = new Error(typeof detail === 'string' ? detail : 'Something went wrong. Please try again.');
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -158,7 +171,10 @@ async function loadProducts() {
 }
 
 async function refreshCart() {
-  cart = await request('/cart', { authenticated: true });
+  const sessionToken = token;
+  const updated = await request('/cart', { authenticated: true });
+  if (sessionToken !== token || !user) return;
+  cart = updated;
   updateAccount();
   renderCart();
 }
@@ -186,6 +202,7 @@ function renderCart() {
   const content = $('#cart-content');
   content.replaceChildren();
   $('#cart-summary').hidden = !user || !cart.items.length;
+  $('#checkout-button').disabled = busy || orderBusy || cart.items.some((item) => !item.product?.in_stock);
   if (!user || !cart.items.length) {
     const empty = element('div', 'bag-empty');
     empty.append(element('span', 'empty-symbol', '＋'), element('h3', '', user ? 'Room for a new favorite.' : 'Your finds belong together.'), element('p', 'muted', user ? 'Explore the collection and add something to your bag.' : 'Sign in to view your saved bag.'));
@@ -311,7 +328,187 @@ $('#cart-button').addEventListener('click', async () => {
   $('#cart-dialog').showModal();
   if (!user) return;
   $('#cart-content').textContent = 'Updating your bag…';
+  $('#checkout-button').disabled = true;
   try { await refreshCart(); } catch (error) { renderCart(); showError('#cart-error', errorText(error)); }
+});
+
+function reviewCheckout() {
+  const review = $('#checkout-review');
+  review.replaceChildren();
+  for (const item of checkoutDraft.items) {
+    const row = element('div', 'review-row');
+    row.append(element('span', '', `${item.quantity} × ${item.name}`), element('strong', '', money(item.unit_price_paise * item.quantity)));
+    review.append(row);
+  }
+  const total = element('div', 'review-row review-total');
+  total.append(element('span', '', 'Items total'), element('strong', '', money(checkoutDraft.expected_total_paise)));
+  review.append(total, element('p', 'muted', 'Shipping and taxes have not been calculated. This is an unpaid order, not a final payment quote.'));
+}
+
+$('#checkout-button').addEventListener('click', async () => {
+  if (busy || orderBusy || !user) return;
+  showError('#cart-error', '');
+  $('#checkout-button').disabled = true;
+  try {
+    if (!checkoutSubmission) {
+      await refreshCart();
+      if (!cart.items.length) throw new Error('Your bag is empty.');
+      if (cart.items.some((item) => !item.product?.in_stock)) throw new Error('Remove unavailable items before checkout.');
+      checkoutDraft = {
+        expected_total_paise: cart.total_paise,
+        items: cart.items.map((item) => ({ product_id: item.product_id, name: item.product.name, quantity: item.quantity, unit_price_paise: item.product.price_paise })),
+      };
+      $('#shipping-fields').disabled = false;
+      $('#shipping-name').value ||= user.full_name;
+      showError('#checkout-error', '');
+    }
+    reviewCheckout();
+    $('#place-order').textContent = checkoutSubmission ? 'Retry safely' : 'Create unpaid order';
+    $('#cart-dialog').close();
+    $('#checkout-dialog').showModal();
+  } catch (error) { showError('#cart-error', errorText(error)); }
+  finally { renderCart(); }
+});
+
+$('#checkout-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (orderBusy || !checkoutDraft || !user) return;
+  if (!checkoutSubmission) {
+    checkoutSubmission = {
+      checkout_key: crypto.randomUUID(),
+      expected_total_paise: checkoutDraft.expected_total_paise,
+      items: checkoutDraft.items.map(({ name, ...item }) => item),
+      shipping: {
+        full_name: $('#shipping-name').value.trim(), address: $('#shipping-address').value.trim(),
+        city: $('#shipping-city').value.trim(), postal_code: $('#shipping-postal').value.trim(), country: $('#shipping-country').value.trim(),
+      },
+    };
+  }
+  const sessionToken = token;
+  orderBusy = true;
+  $('#shipping-fields').disabled = true;
+  $('#place-order').disabled = true;
+  $('#place-order').textContent = 'Creating your order…';
+  showError('#checkout-error', '');
+  try {
+    const order = await request('/orders', { method: 'POST', body: checkoutSubmission, authenticated: true });
+    if (token !== sessionToken || !user) return;
+    checkoutSubmission = null;
+    checkoutDraft = null;
+    $('#checkout-form').reset();
+    $('#checkout-dialog').close();
+    cart = { items: [], total_paise: 0 };
+    updateAccount();
+    renderCart();
+    notify(`Order #${order.id} saved. Payment is pending; no charge was made.`);
+    await openOrders(order);
+    try { await refreshCart(); } catch (error) { notify(errorText(error)); }
+  } catch (error) {
+    if (error.status && error.status < 500) {
+      checkoutSubmission = null;
+      $('#shipping-fields').disabled = false;
+    }
+    showError('#checkout-error', `${errorText(error)}${checkoutSubmission ? ' The result is uncertain. Retry safely with the same details, or check My orders.' : ''}`);
+    if (error.status === 409) {
+      checkoutDraft = null;
+      $('#place-order').hidden = true;
+      showError('#checkout-error', `${errorText(error)} Close checkout and reopen your bag to review it.`);
+    }
+  } finally {
+    orderBusy = false;
+    $('#place-order').disabled = false;
+    $('#place-order').textContent = checkoutSubmission ? 'Retry safely' : 'Create unpaid order';
+  }
+});
+
+function renderOrders(orders) {
+  const content = $('#orders-content');
+  content.replaceChildren();
+  if (!orders.length) { content.append(element('p', 'empty-state', 'Your orders will appear here after checkout.')); return; }
+  for (const order of orders) {
+    const card = element('article', 'order-card');
+    const heading = element('div', 'review-row');
+    heading.append(element('h3', '', `Order #${order.id}`), element('strong', '', money(order.total_paise)));
+    card.append(heading, element('p', 'order-status', order.status === 'pending_payment' ? 'Awaiting payment · No charge made' : order.status), element('p', 'muted', new Date(order.created_at).toLocaleString('en-IN')));
+    for (const item of order.items) {
+      const row = element('div', 'review-row');
+      row.append(element('span', '', `${item.quantity} × ${item.name}`), element('span', '', money(item.subtotal_paise)));
+      card.append(row);
+    }
+    card.append(element('p', 'order-address', `Ship to ${order.shipping.full_name}: ${order.shipping.address}, ${order.shipping.city}, ${order.shipping.postal_code}, ${order.shipping.country}`));
+    content.append(card);
+  }
+}
+
+async function openOrders(confirmedOrder = null) {
+  if (!user) { openAuth(); return; }
+  if ($('#account-dialog').open) $('#account-dialog').close();
+  if (!$('#orders-dialog').open) $('#orders-dialog').showModal();
+  showError('#orders-error', '');
+  if (confirmedOrder) renderOrders([confirmedOrder]);
+  else $('#orders-content').textContent = 'Loading your orders…';
+  $('#orders-refresh').disabled = true;
+  const sessionToken = token;
+  try {
+    const orders = await request('/orders', { authenticated: true });
+    if (token === sessionToken && user) renderOrders(orders);
+  } catch (error) {
+    if (!confirmedOrder) $('#orders-content').replaceChildren();
+    showError('#orders-error', errorText(error));
+  } finally { $('#orders-refresh').disabled = false; }
+}
+$('#orders-button').addEventListener('click', () => openOrders());
+$('#orders-refresh').addEventListener('click', () => openOrders());
+$('#checkout-dialog').addEventListener('close', () => { $('#place-order').hidden = false; });
+
+function appendChat(role, content) {
+  $('#chat-messages').append(element('p', `chat-bubble ${role}`, content));
+  $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
+}
+
+async function sendChat(message) {
+  if (chatBusy || !message.trim()) return;
+  chatBusy = true;
+  const history = chatHistory.slice(-12);
+  $('#chat-send').disabled = true;
+  $('#chat-clear').disabled = true;
+  document.querySelectorAll('[data-prompt]').forEach((button) => { button.disabled = true; });
+  showError('#chat-error', '');
+  appendChat('user', message);
+  const thinking = element('p', 'chat-bubble assistant thinking', 'Looking through the collection…');
+  $('#chat-messages').append(thinking);
+  $('#chat-messages').setAttribute('aria-busy', 'true');
+  try {
+    const response = await request('/chat', { method: 'POST', body: { message, history }, timeout: 60000 });
+    thinking.remove();
+    appendChat('assistant', response.reply);
+    chatHistory.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply.slice(0, 2000) });
+    chatHistory = chatHistory.slice(-12);
+    if ($('#chat-input').value.trim() === message) $('#chat-input').value = '';
+  } catch (error) {
+    thinking.remove();
+    showError('#chat-error', errorText(error));
+    $('#chat-input').value = message;
+  } finally {
+    chatBusy = false;
+    $('#chat-messages').setAttribute('aria-busy', 'false');
+    $('#chat-send').disabled = false;
+    $('#chat-clear').disabled = false;
+    document.querySelectorAll('[data-prompt]').forEach((button) => { button.disabled = false; });
+    if ($('#chat-dialog').open) $('#chat-input').focus();
+  }
+}
+$('#chat-launcher').addEventListener('click', () => { $('#chat-dialog').showModal(); $('#chat-input').focus(); });
+$('#chat-form').addEventListener('submit', (event) => { event.preventDefault(); sendChat($('#chat-input').value.trim()); });
+$('#chat-input').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendChat($('#chat-input').value.trim()); }
+});
+document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => { $('#chat-input').value = button.dataset.prompt; sendChat(button.dataset.prompt); }));
+$('#chat-clear').addEventListener('click', () => {
+  chatHistory = [];
+  $('#chat-messages').replaceChildren(element('p', 'chat-bubble assistant', 'A fresh start. What would you like to find?'));
+  $('#chat-input').value = '';
+  showError('#chat-error', '');
 });
 for (const selector of ['#search', '#stock-filter', '#sort']) $(selector).addEventListener('input', renderProducts);
 document.querySelectorAll('[data-close]').forEach((button) => {

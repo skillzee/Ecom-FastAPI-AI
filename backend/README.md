@@ -83,7 +83,7 @@ Updating that entry returns `404`.
 python -m unittest discover -s tests -v
 ```
 
-Tests use temporary in-memory SQLite databases and a separate test signing
+Tests use temporary SQLite databases and a separate test signing
 secret. They do not change `ecommerce.db` or make model-provider requests.
 
 ## Storefront
@@ -91,3 +91,58 @@ secret. They do not change `ecommerce.db` or make model-provider requests.
 The local frontend is in `../frontend`. With this backend running on port 8000,
 run `npm.cmd run dev` from `frontend` and open `http://127.0.0.1:5173`.
 See [the frontend README](../frontend/README.md) for configuration and tests.
+
+## Orders and checkout
+
+Restart FastAPI after updating the backend. Startup creates the new `orders`
+and `order_items` tables without modifying existing catalog or user columns.
+All order endpoints require a bearer token and return only the current user's
+orders. `GET /orders` returns newest first; `GET /orders/{id}` returns `404`
+for missing orders and orders belonging to another user.
+
+`POST /orders` creates an unpaid order from the current cart. Send:
+
+```json
+{
+  "checkout_key": "b6480a3a-1f8c-40dd-9a5b-46a17e16f213",
+  "shipping": {
+    "full_name": "Sample Shopper",
+    "address": "10 Sample Street",
+    "city": "Pune",
+    "postal_code": "411001",
+    "country": "India"
+  },
+  "items": [{"product_id": 1, "quantity": 2, "unit_price_paise": 12550}],
+  "expected_total_paise": 25100
+}
+```
+
+The server computes prices from the catalog and compares the exact reviewed
+items with the cart. Empty carts, changed prices/quantities, and unavailable
+products return `409` without clearing the cart. Up to 200 different products
+are supported per checkout. SQLite's write lock serializes concurrent checkout
+transactions. Order items and shipping details are snapshotted, and saving the
+order and clearing the cart commit together. Failed transactions roll back both.
+
+Reuse the same UUID and payload after an uncertain response: it returns the
+existing order rather than creating another. Reusing a key with different
+details returns `409`. Successful creation/replay returns `201`. The client
+retains the pending submission in page memory for safe retry; after reloading,
+check My orders before starting another checkout.
+
+Orders have status `pending_payment`. No payment, delivery, shipping/tax quote,
+or stock reservation happens. Current inventory is a boolean availability flag;
+quantity-based stock and payment verification belong to the payment phase.
+
+## Shopping assistant
+
+`POST /chat` accepts `message` (1–2000 non-whitespace characters) and optional
+`history` (up to 12 entries with `role: "user" | "assistant"` and `content`,
+each up to 2000 characters). It returns `{"reply": "..."}`. Existing clients
+that send only `message` still work. Catalog answers use the product tool.
+The assistant cannot access customer carts/orders or perform checkout actions.
+
+Configure `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` in `.env`.
+Provider failures or requests taking more than 45 seconds return a readable
+`503`, without exposing provider error details. The frontend proxy allows a
+longer timeout for chat. Tests mock provider calls; they do not spend API credits.

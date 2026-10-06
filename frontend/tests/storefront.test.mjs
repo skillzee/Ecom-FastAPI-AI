@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
+import { randomUUID } from 'node:crypto';
 
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const script = await readFile(new URL('../public/app.js', import.meta.url), 'utf8');
@@ -17,6 +18,7 @@ async function storefront(t) {
   const { window } = dom;
   const { document } = window;
   window.AbortSignal = AbortSignal;
+  window.crypto.randomUUID = randomUUID;
   for (const dialog of document.querySelectorAll('dialog')) {
     dialog.showModal = () => { dialog.open = true; };
     dialog.close = () => { dialog.open = false; dialog.dispatchEvent(new window.Event('close')); };
@@ -28,6 +30,11 @@ async function storefront(t) {
   ];
   let items = [];
   let expires = false;
+  let chatFailure = false;
+  let checkoutConflict = false;
+  let loseOrderReply = false;
+  const orders = [];
+  const orderKeys = new Map();
   const calls = [];
   window.fetch = async (url, options = {}) => {
     calls.push({ url, ...options });
@@ -44,6 +51,23 @@ async function storefront(t) {
       else data = { access_token: 'test-token', token_type: 'bearer', expires_in: 1800 };
     } else if (url === '/api/users/me') data = { id: 1, full_name: 'Sample Shopper', email: 'shopper@example.com' };
     else if (url === '/api/cart') data = { items, total_paise: items.reduce((sum, item) => sum + item.subtotal_paise, 0) };
+    else if (url === '/api/chat') {
+      if (chatFailure) { status = 503; data = { detail: 'The shopping assistant is temporarily unavailable.' }; }
+      else data = { reply: 'Try the notebook. <img src=x onerror=alert(1)>' };
+    } else if (url === '/api/orders' && method === 'POST') {
+      if (checkoutConflict) { status = 409; data = { detail: 'Your bag or prices changed. Review your bag and try again' }; }
+      else {
+        data = orderKeys.get(body.checkout_key);
+        if (!data) {
+          data = { id: orders.length + 1, created_at: '2026-10-06T10:00:00+00:00', status: 'pending_payment', total_paise: body.expected_total_paise, shipping: body.shipping, items: items.map((item) => ({ product_id: item.product_id, quantity: item.quantity, name: item.product.name, unit_price_paise: item.product.price_paise, subtotal_paise: item.subtotal_paise })) };
+          orders.unshift(structuredClone(data));
+          orderKeys.set(body.checkout_key, structuredClone(data));
+          items = [];
+        }
+        if (loseOrderReply) { loseOrderReply = false; throw new window.TypeError('Connection dropped'); }
+        status = 201;
+      }
+    } else if (url === '/api/orders') data = orders;
     else if (url === '/api/cart/items' && method === 'POST') {
       const product = products.find((entry) => entry.id === body.product_id);
       const existing = items.find((entry) => entry.product_id === product.id);
@@ -72,7 +96,25 @@ async function storefront(t) {
     select('#auth-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
     await settled();
   };
-  return { window, document, select, input, login, calls, expire: () => { expires = true; } };
+  const beginCheckout = async () => {
+    await login();
+    select('.add-button').click();
+    await settled();
+    select('#cart-button').click();
+    await settled();
+    select('#checkout-button').click();
+    await settled();
+    input('#shipping-address', '10 Sample Street');
+    input('#shipping-city', 'Pune');
+    input('#shipping-postal', '411001');
+  };
+  const submitOrder = async () => {
+    select('#checkout-form').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+    await settled();
+  };
+  return { window, document, select, input, login, calls, beginCheckout, submitOrder,
+    expire: () => { expires = true; }, failChat: () => { chatFailure = true; },
+    conflictCheckout: () => { checkoutConflict = true; }, loseOrderReply: () => { loseOrderReply = true; } };
 }
 
 test('catalog search, stock filtering, sorting, and safe product rendering', async (t) => {
@@ -152,4 +194,84 @@ test('registration signs in and an expired session clears account data', async (
   assert.equal(ui.window.sessionStorage.getItem('everyday-token'), null);
   assert.match(ui.select('#account-button').textContent, /Sign in/);
   assert.match(ui.select('#cart-error').textContent, /sign in again/);
+});
+
+test('checkout creates an unpaid order, shows confirmation/history, and clears the bag', async (t) => {
+  const ui = await storefront(t);
+  await ui.beginCheckout();
+  assert.equal(ui.select('#checkout-dialog').open, true);
+  assert.match(ui.select('#checkout-review').textContent, /125\.50/);
+  await ui.submitOrder();
+  assert.equal(ui.select('#checkout-dialog').open, false);
+  assert.equal(ui.select('#orders-dialog').open, true);
+  assert.equal(ui.select('#cart-count').textContent, '0');
+  assert.match(ui.select('#orders-content').textContent, /Order #1/);
+  assert.match(ui.select('#orders-content').textContent, /Awaiting payment/);
+  const body = JSON.parse(ui.calls.find((call) => call.url === '/api/orders' && call.method === 'POST').body);
+  assert.equal(body.expected_total_paise, 12550);
+  assert.equal(body.shipping.city, 'Pune');
+  assert.deepEqual(body.items, [{ product_id: 1, quantity: 1, unit_price_paise: 12550 }]);
+});
+
+test('checkout retries a lost response with the same key without duplicating orders', async (t) => {
+  const ui = await storefront(t);
+  await ui.beginCheckout();
+  ui.loseOrderReply();
+  await ui.submitOrder();
+  assert.equal(ui.select('#checkout-error').hidden, false);
+  assert.match(ui.select('#checkout-error').textContent, /result is uncertain/);
+  assert.equal(ui.select('#shipping-fields').disabled, true);
+  assert.match(ui.select('#place-order').textContent, /Retry safely/);
+  await ui.submitOrder();
+  const requests = ui.calls.filter((call) => call.url === '/api/orders' && call.method === 'POST');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].body, requests[1].body);
+  assert.equal(ui.document.querySelectorAll('.order-card').length, 1);
+});
+
+test('checkout conflict keeps the cart and requires reviewing the bag', async (t) => {
+  const ui = await storefront(t);
+  await ui.beginCheckout();
+  ui.conflictCheckout();
+  await ui.submitOrder();
+  assert.equal(ui.select('#checkout-dialog').open, true);
+  assert.match(ui.select('#checkout-error').textContent, /reopen your bag/);
+  assert.equal(ui.select('#place-order').hidden, true);
+  assert.equal(ui.select('#cart-count').textContent, '1');
+  assert.equal(ui.select('#orders-dialog').open, false);
+});
+
+test('chat launcher, conversation history, safe replies, and clearing work', async (t) => {
+  const ui = await storefront(t);
+  ui.select('#chat-launcher').click();
+  assert.equal(ui.select('#chat-dialog').open, true);
+  ui.input('#chat-input', 'What is available?');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.match(ui.select('#chat-messages').textContent, /Try the notebook/);
+  assert.equal(ui.document.querySelectorAll('#chat-messages img').length, 0);
+  assert.equal(ui.select('#chat-input').value, '');
+  ui.input('#chat-input', 'What does it cost?');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  const calls = ui.calls.filter((call) => call.url === '/api/chat');
+  assert.equal(JSON.parse(calls[0].body).history.length, 0);
+  assert.equal(JSON.parse(calls[1].body).history.length, 2);
+  assert.equal(JSON.parse(calls[1].body).history[0].content, 'What is available?');
+  ui.select('#chat-clear').click();
+  assert.equal(ui.document.querySelectorAll('.chat-bubble').length, 1);
+});
+
+test('chat provider failure is visible and preserves the message for retry', async (t) => {
+  const ui = await storefront(t);
+  ui.failChat();
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'Find a notebook');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.equal(ui.select('#chat-error').hidden, false);
+  assert.match(ui.select('#chat-error').textContent, /temporarily unavailable/);
+  assert.equal(ui.select('#chat-input').value, 'Find a notebook');
+  assert.equal(ui.select('#chat-send').disabled, false);
+  assert.equal(ui.document.querySelectorAll('.thinking').length, 0);
 });

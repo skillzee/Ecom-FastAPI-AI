@@ -6,6 +6,7 @@ from sqlmodel import create_engine, SQLModel, Session
 from app.models.product import Product
 from app.models.user import User
 from app.models.cart import CartItem
+from app.models.order import Order, OrderItem
 
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "ecommerce.db"

@@ -1,12 +1,14 @@
 from app.ai.agent import get_shopping_agent
+from app.schemas.chat import ChatMessage
 
 
-async def generate_reply(message: str) -> str:
+async def generate_reply(message: str, history: list[ChatMessage] | None = None) -> str:
     agent = get_shopping_agent()
 
     result = await agent.ainvoke(
         {
             "messages": [
+                *(entry.model_dump() for entry in (history or [])),
                 {"role": "user", "content": message},
             ]
         }

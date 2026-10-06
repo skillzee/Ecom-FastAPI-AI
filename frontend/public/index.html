@@ -64,8 +64,34 @@
     <div class="drawer-heading"><div><p class="eyebrow">YOUR EVERYDAY FINDS</p><h2 id="cart-title">Shopping bag<span id="bag-quantity"></span></h2></div><button class="close-button" data-close="cart-dialog" aria-label="Close shopping bag">×</button></div>
     <p id="cart-error" class="error-message" role="alert" hidden></p>
     <div id="cart-content" class="cart-content"></div>
-    <div id="cart-summary" class="cart-summary" hidden><div><span>Subtotal</span><strong id="cart-total"></strong></div><p>Current product prices. Shipping and taxes are not included. Out-of-stock items are included in this estimate.</p><p class="checkout-note">Checkout is coming soon. Your bag is saved for later.</p><button class="secondary-button" data-close="cart-dialog">Continue shopping <span aria-hidden="true">↗</span></button></div>
+    <div id="cart-summary" class="cart-summary" hidden><div><span>Subtotal</span><strong id="cart-total"></strong></div><p>Current product prices. Shipping and taxes are not included. Out-of-stock items must be removed before checkout.</p><button id="checkout-button" class="primary-button">Continue to checkout ↗</button><button class="secondary-button" data-close="cart-dialog">Continue shopping <span aria-hidden="true">↗</span></button></div>
   </dialog>
-  <dialog id="account-dialog" class="auth-dialog" aria-labelledby="account-title"><button class="close-button" data-close="account-dialog" aria-label="Close account dialog">×</button><p class="eyebrow">YOUR EVERYDAY</p><h2 id="account-title">Your account</h2><p id="account-name"></p><p id="account-email" class="muted"></p><button id="sign-out" class="secondary-button">Sign out</button></dialog>
+  <dialog id="account-dialog" class="auth-dialog" aria-labelledby="account-title"><button class="close-button" data-close="account-dialog" aria-label="Close account dialog">×</button><p class="eyebrow">YOUR EVERYDAY</p><h2 id="account-title">Your account</h2><p id="account-name"></p><p id="account-email" class="muted"></p><button id="orders-button" class="primary-button">My orders ↗</button><button id="sign-out" class="secondary-button">Sign out</button></dialog>
+  <dialog id="checkout-dialog" class="checkout-dialog auth-dialog" aria-labelledby="checkout-title">
+    <button class="close-button" data-close="checkout-dialog" aria-label="Close checkout">×</button><p class="eyebrow">THE NEXT STEP</p><h2 id="checkout-title">Make it yours.</h2>
+    <p class="checkout-note">This creates an unpaid order. Online payments and fulfillment are not available yet; no money will be charged.</p>
+    <div id="checkout-review"></div>
+    <form id="checkout-form">
+      <fieldset id="shipping-fields"><legend>Shipping details</legend>
+        <label>Recipient name<input id="shipping-name" autocomplete="shipping name" maxlength="100" required></label>
+        <label>Street address<input id="shipping-address" autocomplete="shipping street-address" maxlength="300" required></label>
+        <div class="form-row"><label>City<input id="shipping-city" autocomplete="shipping address-level2" maxlength="100" required></label><label>Postal code<input id="shipping-postal" autocomplete="shipping postal-code" maxlength="20" required></label></div>
+        <label>Country<input id="shipping-country" autocomplete="shipping country-name" minlength="2" maxlength="100" value="India" required></label>
+      </fieldset>
+      <p id="checkout-error" class="error-message" role="alert" hidden></p>
+      <button id="place-order" class="primary-button" type="submit">Create unpaid order</button>
+    </form>
+  </dialog>
+  <dialog id="orders-dialog" class="cart-dialog" aria-labelledby="orders-title"><div class="drawer-heading"><div><p class="eyebrow">YOUR COLLECTION</p><h2 id="orders-title">My orders</h2></div><button class="close-button" data-close="orders-dialog" aria-label="Close order history">×</button></div><p id="orders-error" class="error-message" role="alert" hidden></p><div id="orders-content" class="orders-content"></div><button id="orders-refresh" class="secondary-button">Refresh orders</button></dialog>
+  <button id="chat-launcher" class="chat-launcher" aria-haspopup="dialog" aria-controls="chat-dialog"><span aria-hidden="true">✦</span> Ask Everyday</button>
+  <dialog id="chat-dialog" class="chat-dialog" aria-labelledby="chat-title">
+    <div class="chat-heading"><div><p class="eyebrow">A HAND FINDING YOUR FAVORITES</p><h2 id="chat-title">Ask Everyday</h2></div><button class="close-button" data-close="chat-dialog" aria-label="Close shopping assistant">×</button></div>
+    <p class="chat-disclaimer">AI shopping assistant · Ask about products, prices, and availability. Verify details in the catalog. Please don’t share passwords or payment details.</p>
+    <div id="chat-messages" class="chat-messages" role="log" aria-label="Shopping assistant conversation" aria-live="polite"><p class="chat-bubble assistant">Hello! Looking for something? Tell me what you have in mind and I’ll help you explore the collection.</p></div>
+    <div class="chat-suggestions"><button data-prompt="What products are available?">Explore the catalog</button><button data-prompt="What are the most affordable in-stock products?">Find a good value</button></div>
+    <p id="chat-error" class="error-message" role="alert" hidden></p>
+    <form id="chat-form"><label class="sr-only" for="chat-input">Message the shopping assistant</label><textarea id="chat-input" placeholder="Ask about the collection…" maxlength="2000" rows="2" required></textarea><button id="chat-send" class="primary-button" type="submit" aria-label="Send message">↑</button></form>
+    <button id="chat-clear" class="text-button">Clear conversation</button>
+  </dialog>
 </body>
 </html>

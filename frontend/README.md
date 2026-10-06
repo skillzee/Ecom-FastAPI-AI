@@ -30,6 +30,9 @@ manager/reverse proxy, HTTPS, and a reachable FastAPI backend.
 - Registration, login, account details, and local sign-out.
 - Real catalog data with name search, price/name sorting, and stock filtering.
 - Add to bag, view totals in INR, change quantities (1–100), and remove items.
+- Checkout with shipping details, a reviewed item total, and saved order history.
+- Floating **Ask Everyday** chatbot with conversation context, suggested prompts,
+  loading/error states, and a clear-conversation control.
 - Empty, loading, unavailable-product, connection-error, and expired-session states.
 - Responsive layout, accessible dialog controls, and keyboard navigation.
 
@@ -38,8 +41,23 @@ disabled). Closing the tab clears the session; logging out clears the local
 token without revoking it on the backend. The backend saves the cart by user.
 Account registration automatically signs the user in. The catalog has no image
 field, so cards use decorative initials rather than invented product photos.
-Checkout, orders, and payment are not implemented. Product administration remains
-in the backend and requires authorization work before public deployment.
+Checkout creates an order with status `pending_payment` and clears the cart.
+No charge is made. Online payments, shipping/tax calculation, fulfillment, and
+inventory reservation are not implemented. Order snapshots keep the reviewed
+names and prices even if the catalog later changes. Open **Your account → My
+orders** to view saved orders. Changed prices, quantities, or unavailable items
+must be reviewed in the bag before submitting again.
+
+The chatbot calls the backend's `/chat` endpoint and can help with catalog
+questions; it cannot modify the bag, place orders, or access account details.
+Chat messages and the latest 12 context messages are sent to the configured AI
+provider. Conversation history stays in page memory and is cleared on reload.
+Set `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` in the root `.env`,
+then restart FastAPI. No provider credentials are sent to the browser. A chatbot
+service error is shown in the chat panel and leaves the message ready to retry.
+
+Product administration remains in the backend and requires authorization work
+before public deployment.
 
 ## Checks
 
@@ -54,5 +72,6 @@ npm.cmd test
 
 The proxy and UI tests use a temporary mock API; they do not change the store
 database. UI tests cover catalog controls, safe rendering, registration, login
-errors, cart changes, logout, and expired sessions. These DOM tests do not replace
+errors, cart changes, checkout/retries, order history, chatbot conversations and
+errors, logout, and expired sessions. These DOM tests do not replace
 visual checks in desktop and mobile browsers.
