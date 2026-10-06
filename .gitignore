@@ -7,5 +7,5 @@ __pycache__/
 !.env.example
 backend/ecommerce.db*
 node_modules/
-
+backend/faiss_index/
 
