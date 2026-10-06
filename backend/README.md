@@ -85,3 +85,9 @@ python -m unittest discover -s tests -v
 
 Tests use temporary in-memory SQLite databases and a separate test signing
 secret. They do not change `ecommerce.db` or make model-provider requests.
+
+## Storefront
+
+The local frontend is in `../frontend`. With this backend running on port 8000,
+run `npm.cmd run dev` from `frontend` and open `http://127.0.0.1:5173`.
+See [the frontend README](../frontend/README.md) for configuration and tests.
