@@ -46,6 +46,28 @@ The current feature adds access-token login and one protected endpoint.
 Refresh tokens, logout/revocation, roles, and protection of product write
 endpoints are future steps. Access tokens expire naturally after 30 minutes.
 
+## Cart
+
+All cart endpoints require a bearer access token and use the signed-in user's
+ID. Clients cannot select another user's cart.
+
+- `POST /cart/items`: add `{"product_id": 1, "quantity": 2}`. Adding the same
+  product again increases its existing quantity, up to 100 per product.
+- `GET /cart`: return `items` and `total_paise`. Each item includes its cart
+  `id`, `product_id`, `quantity`, current `product` details, and `subtotal_paise`.
+  An empty cart returns `{"items": [], "total_paise": 0}`.
+- `PATCH /cart/items/{item_id}`: send `{"quantity": 3}` to replace the quantity
+  with a value from 1 through 100. The ID is the cart item ID, not the product ID.
+- `DELETE /cart/items/{item_id}`: remove the item and return an empty `204`.
+
+Missing items and items belonging to another user both return `404`. Adding or
+updating an out-of-stock product returns `409`; removing it is still allowed.
+Prices and totals use integer paise and current catalog prices, including
+out-of-stock products. Totals are estimates and do not reserve stock or prices.
+If a catalog product has been deleted, its cart entry remains removable, with
+`product` and `subtotal_paise` set to `null`; it is excluded from `total_paise`.
+Updating that entry returns `404`.
+
 ## Modules
 
 - `schemas/user.py` and `schemas/auth.py`: request and response contracts.
