@@ -7,6 +7,7 @@ from app.models.product import Product
 from app.models.user import User
 from app.models.cart import CartItem
 from app.models.order import Order, OrderItem
+from app.services.sample_catalog import seed_sample_products
 
 
 DATABASE_PATH = Path(__file__).resolve().parent.parent / "ecommerce.db"
@@ -20,6 +21,8 @@ engine = create_engine(
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        seed_sample_products(session)
 
 def get_session():
     with Session(engine) as session:

@@ -88,6 +88,14 @@ secret. They do not change `ecommerce.db` or make model-provider requests.
 
 ## Storefront
 
+On backend startup, missing sample products are added automatically to SQLite.
+The 12-product demo catalog includes stationery, mugs, bottles, bags, clothing,
+electronics, lighting, fitness, and candles, plus an out-of-stock speaker.
+Sample names and demo prices are in `app/services/sample_catalog.py`.
+Restarting does not duplicate matching names (case-insensitive) or overwrite
+existing prices, availability, IDs, or custom products. Deleted sample products
+are added again on the next startup.
+
 The local frontend is in `../frontend`. With this backend running on port 8000,
 run `npm.cmd run dev` from `frontend` and open `http://127.0.0.1:5173`.
 See [the frontend README](../frontend/README.md) for configuration and tests.
