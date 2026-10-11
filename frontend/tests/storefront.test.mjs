@@ -252,6 +252,7 @@ test('chat launcher, conversation history, safe replies, and clearing work', asy
   assert.equal(ui.select('#chat-dialog').open, true);
   ui.input('#chat-input', 'What is available?');
   ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  assert.equal(ui.select('#chat-input').value, '');
   await settled();
   assert.match(ui.select('#chat-messages').textContent, /Try the notebook/);
   assert.equal(ui.document.querySelectorAll('#chat-messages img').length, 0);

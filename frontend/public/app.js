@@ -486,6 +486,7 @@ async function sendChat(message) {
   document.querySelectorAll('[data-prompt]').forEach((button) => { button.disabled = true; });
   showError('#chat-error', '');
   appendChat('user', message);
+  $('#chat-input').value = '';
   const thinking = element('p', 'chat-bubble assistant thinking', 'Looking through the collection…');
   $('#chat-messages').append(thinking);
   $('#chat-messages').setAttribute('aria-busy', 'true');
@@ -496,12 +497,11 @@ async function sendChat(message) {
     appendChat('assistant', response.reply);
     chatHistory.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply.slice(0, 2000) });
     chatHistory = chatHistory.slice(-12);
-    if ($('#chat-input').value.trim() === message) $('#chat-input').value = '';
   } catch (error) {
     thinking.remove();
     if (sessionToken !== token || !user) return;
     showError('#chat-error', errorText(error));
-    $('#chat-input').value = message;
+    if (!$('#chat-input').value) $('#chat-input').value = message;
   } finally {
     if (sessionToken === token && user) {
       try { await refreshCart(); }
