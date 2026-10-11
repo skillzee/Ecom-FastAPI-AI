@@ -503,6 +503,10 @@ async function sendChat(message) {
     showError('#chat-error', errorText(error));
     $('#chat-input').value = message;
   } finally {
+    if (sessionToken === token && user) {
+      try { await refreshCart(); }
+      catch (error) { notify(`Please check your bag before retrying an addition. ${errorText(error)}`); }
+    }
     chatBusy = false;
     $('#chat-messages').setAttribute('aria-busy', 'false');
     $('#chat-send').disabled = false;

@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 @router.post("", response_model=ChatResponse)
 async def chat(request: ChatRequest, user: CurrentUser):
     try:
-        reply = await asyncio.wait_for(generate_reply(request.message, request.history), timeout=45)
+        reply = await asyncio.wait_for(generate_reply(request.message, request.history, user_id=user.id), timeout=45)
     except Exception:
         # Avoid exposing provider credentials or logging shopper messages.
         logger.warning("Shopping assistant request failed")
         raise HTTPException(
             status_code=503,
-            detail="The shopping assistant is temporarily unavailable. Please try again shortly.",
+            detail="The shopping assistant is temporarily unavailable. If you asked to add products, check your bag before retrying.",
         ) from None
     return ChatResponse(reply=reply)

@@ -144,7 +144,14 @@ return `401` before the assistant is called.
 `history` (up to 12 entries with `role: "user" | "assistant"` and `content`,
 each up to 2000 characters). It returns `{"reply": "..."}`. Existing clients
 that send only `message` still work. Catalog answers use the product tool.
-The assistant cannot access customer carts/orders or perform checkout actions.
+The assistant can add products to the authenticated user's cart through an
+`add_to_cart` tool. The user ID is bound on the server and is never a model
+argument. Requests such as "Add 2 notebooks to my cart" use catalog IDs and
+the existing cart stock and quantity checks (maximum 100 per product).
+Repeated additions of the same product within one chat turn are suppressed.
+The assistant cannot read customer carts/orders or perform checkout actions.
+If a reply fails after an addition, check the bag before retrying: a completed
+cart write remains saved even when the provider fails to generate a reply.
 
 Configure `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` in `.env`.
 Provider failures or requests taking more than 45 seconds return a readable

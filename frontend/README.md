@@ -49,7 +49,10 @@ orders** to view saved orders. Changed prices, quantities, or unavailable items
 must be reviewed in the bag before submitting again.
 
 The chatbot calls the backend's `/chat` endpoint and can help with catalog
-questions; it cannot modify the bag, place orders, or access account details.
+questions and add requested products to the signed-in user's bag. For example,
+ask "Add 2 notebooks to my cart". It cannot place orders or access account details.
+The bag count and contents refresh after chat. If a reply fails, check the bag
+before retrying an addition, since it may already have been saved.
 Guests are prompted to sign in before opening chat. Chat requests include the
 access token; signing out or session expiration closes chat and clears its history.
 Chat messages and the latest 12 context messages are sent to the configured AI

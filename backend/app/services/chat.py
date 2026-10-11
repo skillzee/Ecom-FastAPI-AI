@@ -2,8 +2,8 @@ from app.ai.agent import get_shopping_agent
 from app.schemas.chat import ChatMessage
 
 
-async def generate_reply(message: str, history: list[ChatMessage] | None = None) -> str:
-    agent = get_shopping_agent()
+async def generate_reply(message: str, history: list[ChatMessage] | None = None, *, user_id: int) -> str:
+    agent = get_shopping_agent(user_id)
 
     result = await agent.ainvoke(
         {

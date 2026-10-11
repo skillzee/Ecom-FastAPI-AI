@@ -52,6 +52,10 @@ async function storefront(t) {
     } else if (url === '/api/users/me') data = { id: 1, full_name: 'Sample Shopper', email: 'shopper@example.com' };
     else if (url === '/api/cart') data = { items, total_paise: items.reduce((sum, item) => sum + item.subtotal_paise, 0) };
     else if (url === '/api/chat') {
+      if (body.message === 'Add 2 notebooks to my cart') {
+        const product = products[0];
+        items.push({ id: 1, product_id: 1, quantity: 2, product, subtotal_paise: product.price_paise * 2 });
+      }
       if (chatFailure) { status = 503; data = { detail: 'The shopping assistant is temporarily unavailable.' }; }
       else data = { reply: 'Try the notebook. <img src=x onerror=alert(1)>' };
     } else if (url === '/api/orders' && method === 'POST') {
@@ -288,6 +292,18 @@ test('guests are asked to sign in and cannot submit chat requests', async (t) =>
   ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
   await settled();
   assert.equal(ui.calls.filter((call) => call.url === '/api/chat').length, 0);
+});
+
+test('chat additions refresh the bag count and contents', async (t) => {
+  const ui = await storefront(t);
+  await ui.login();
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'Add 2 notebooks to my cart');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.equal(ui.select('#cart-count').textContent, '2');
+  assert.match(ui.select('#cart-content').textContent, /Notebook/);
+  assert.match(ui.select('#cart-total').textContent, /251/);
 });
 
 test('expired chat sessions close and clear the conversation', async (t) => {
