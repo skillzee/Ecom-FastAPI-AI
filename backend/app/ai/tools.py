@@ -29,7 +29,7 @@ def list_products() -> list[dict]:
 @tool
 def search_store_policies(question: str) ->str:
     """Search store policies about returns, refunds, shipping, and other rules."""
-    docs = retrieve_policies()
+    docs = retrieve_policies(question)
 
     if not docs:
         return "No policy passages were found."
