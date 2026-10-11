@@ -50,6 +50,8 @@ must be reviewed in the bag before submitting again.
 
 The chatbot calls the backend's `/chat` endpoint and can help with catalog
 questions; it cannot modify the bag, place orders, or access account details.
+Guests are prompted to sign in before opening chat. Chat requests include the
+access token; signing out or session expiration closes chat and clears its history.
 Chat messages and the latest 12 context messages are sent to the configured AI
 provider. Conversation history stays in page memory and is cleared on reload.
 Set `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` in the root `.env`,

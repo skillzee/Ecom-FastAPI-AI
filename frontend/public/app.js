@@ -44,6 +44,8 @@ function signOut() {
   cart = { items: [], total_paise: 0 };
   checkoutDraft = null;
   checkoutSubmission = null;
+  resetChat();
+  if ($('#chat-dialog').open) $('#chat-dialog').close();
   $('#checkout-form').reset();
   $('#orders-content').replaceChildren();
   $('#checkout-review').replaceChildren();
@@ -67,7 +69,7 @@ async function request(path, { method = 'GET', body, authenticated = false, time
     if (response.status === 401 && authenticated) {
       signOut();
       notify('Your session has expired. Please sign in again.');
-      throw new Error('Please sign in again to access your bag.');
+      throw new Error('Please sign in again to continue.');
     }
     const detail = Array.isArray(data?.detail)
       ? data.detail.map((error) => `${error.loc?.at(-1) || 'Input'}: ${error.msg}`).join(' ')
@@ -466,8 +468,17 @@ function appendChat(role, content) {
   $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
 }
 
+function resetChat() {
+  chatHistory = [];
+  $('#chat-messages').replaceChildren(element('p', 'chat-bubble assistant', 'A fresh start. What would you like to find?'));
+  $('#chat-input').value = '';
+  showError('#chat-error', '');
+}
+
 async function sendChat(message) {
+  if (!user || !token) { openAuth(); return; }
   if (chatBusy || !message.trim()) return;
+  const sessionToken = token;
   chatBusy = true;
   const history = chatHistory.slice(-12);
   $('#chat-send').disabled = true;
@@ -479,7 +490,8 @@ async function sendChat(message) {
   $('#chat-messages').append(thinking);
   $('#chat-messages').setAttribute('aria-busy', 'true');
   try {
-    const response = await request('/chat', { method: 'POST', body: { message, history }, timeout: 60000 });
+    const response = await request('/chat', { method: 'POST', body: { message, history }, authenticated: true, timeout: 60000 });
+    if (sessionToken !== token || !user) return;
     thinking.remove();
     appendChat('assistant', response.reply);
     chatHistory.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply.slice(0, 2000) });
@@ -487,6 +499,7 @@ async function sendChat(message) {
     if ($('#chat-input').value.trim() === message) $('#chat-input').value = '';
   } catch (error) {
     thinking.remove();
+    if (sessionToken !== token || !user) return;
     showError('#chat-error', errorText(error));
     $('#chat-input').value = message;
   } finally {
@@ -498,18 +511,17 @@ async function sendChat(message) {
     if ($('#chat-dialog').open) $('#chat-input').focus();
   }
 }
-$('#chat-launcher').addEventListener('click', () => { $('#chat-dialog').showModal(); $('#chat-input').focus(); });
+$('#chat-launcher').addEventListener('click', () => {
+  if (!user || !token) { notify('Sign in to use the shopping assistant.'); openAuth(); return; }
+  $('#chat-dialog').showModal();
+  $('#chat-input').focus();
+});
 $('#chat-form').addEventListener('submit', (event) => { event.preventDefault(); sendChat($('#chat-input').value.trim()); });
 $('#chat-input').addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); sendChat($('#chat-input').value.trim()); }
 });
 document.querySelectorAll('[data-prompt]').forEach((button) => button.addEventListener('click', () => { $('#chat-input').value = button.dataset.prompt; sendChat(button.dataset.prompt); }));
-$('#chat-clear').addEventListener('click', () => {
-  chatHistory = [];
-  $('#chat-messages').replaceChildren(element('p', 'chat-bubble assistant', 'A fresh start. What would you like to find?'));
-  $('#chat-input').value = '';
-  showError('#chat-error', '');
-});
+$('#chat-clear').addEventListener('click', resetChat);
 for (const selector of ['#search', '#stock-filter', '#sort']) $(selector).addEventListener('input', renderProducts);
 document.querySelectorAll('[data-close]').forEach((button) => {
   button.addEventListener('click', () => document.getElementById(button.dataset.close).close());

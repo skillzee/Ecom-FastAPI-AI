@@ -243,6 +243,7 @@ test('checkout conflict keeps the cart and requires reviewing the bag', async (t
 
 test('chat launcher, conversation history, safe replies, and clearing work', async (t) => {
   const ui = await storefront(t);
+  await ui.login();
   ui.select('#chat-launcher').click();
   assert.equal(ui.select('#chat-dialog').open, true);
   ui.input('#chat-input', 'What is available?');
@@ -255,6 +256,7 @@ test('chat launcher, conversation history, safe replies, and clearing work', asy
   ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
   await settled();
   const calls = ui.calls.filter((call) => call.url === '/api/chat');
+  assert.equal(calls[0].headers.Authorization, 'Bearer test-token');
   assert.equal(JSON.parse(calls[0].body).history.length, 0);
   assert.equal(JSON.parse(calls[1].body).history.length, 2);
   assert.equal(JSON.parse(calls[1].body).history[0].content, 'What is available?');
@@ -264,6 +266,7 @@ test('chat launcher, conversation history, safe replies, and clearing work', asy
 
 test('chat provider failure is visible and preserves the message for retry', async (t) => {
   const ui = await storefront(t);
+  await ui.login();
   ui.failChat();
   ui.select('#chat-launcher').click();
   ui.input('#chat-input', 'Find a notebook');
@@ -274,4 +277,56 @@ test('chat provider failure is visible and preserves the message for retry', asy
   assert.equal(ui.select('#chat-input').value, 'Find a notebook');
   assert.equal(ui.select('#chat-send').disabled, false);
   assert.equal(ui.document.querySelectorAll('.thinking').length, 0);
+});
+
+test('guests are asked to sign in and cannot submit chat requests', async (t) => {
+  const ui = await storefront(t);
+  ui.select('#chat-launcher').click();
+  assert.equal(ui.select('#auth-dialog').open, true);
+  assert.equal(ui.select('#chat-dialog').open, false);
+  ui.input('#chat-input', 'Hello');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.equal(ui.calls.filter((call) => call.url === '/api/chat').length, 0);
+});
+
+test('expired chat sessions close and clear the conversation', async (t) => {
+  const ui = await storefront(t);
+  await ui.login();
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'Hello');
+  ui.expire();
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.equal(ui.select('#chat-dialog').open, false);
+  assert.equal(ui.select('#chat-input').value, '');
+  assert.doesNotMatch(ui.select('#chat-messages').textContent, /Hello|Try the notebook/);
+  assert.equal(ui.window.sessionStorage.getItem('everyday-token'), null);
+});
+
+test('signing out during a chat request discards the late reply', async (t) => {
+  const ui = await storefront(t);
+  await ui.login();
+  const originalFetch = ui.window.fetch;
+  let resolveChat;
+  ui.window.fetch = (url, options) => url === '/api/chat'
+    ? new Promise((resolve) => { resolveChat = resolve; })
+    : originalFetch(url, options);
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'Private question');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  ui.select('#sign-out').click();
+  resolveChat({ status: 200, ok: true, json: async () => ({ reply: 'Late reply' }) });
+  await settled();
+  assert.equal(ui.select('#chat-dialog').open, false);
+  assert.equal(ui.select('#chat-input').value, '');
+  assert.doesNotMatch(ui.select('#chat-messages').textContent, /Private question|Late reply/);
+  await ui.login();
+  ui.window.fetch = originalFetch;
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'New conversation');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  const call = ui.calls.findLast((entry) => entry.url === '/api/chat');
+  assert.deepEqual(JSON.parse(call.body).history, []);
 });

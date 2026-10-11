@@ -136,6 +136,10 @@ quantity-based stock and payment verification belong to the payment phase.
 
 ## Shopping assistant
 
+Chat requires a logged-in user. Send `Authorization: Bearer <access_token>`
+with every request. Missing, invalid, expired tokens, or tokens for deleted users
+return `401` before the assistant is called.
+
 `POST /chat` accepts `message` (1–2000 non-whitespace characters) and optional
 `history` (up to 12 entries with `role: "user" | "assistant"` and `content`,
 each up to 2000 characters). It returns `{"reply": "..."}`. Existing clients

@@ -3,6 +3,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
+from app.core.dependencies import CurrentUser
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat import generate_reply
 
@@ -10,7 +11,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = logging.getLogger(__name__)
 
 @router.post("", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, user: CurrentUser):
     try:
         reply = await asyncio.wait_for(generate_reply(request.message, request.history), timeout=45)
     except Exception:
