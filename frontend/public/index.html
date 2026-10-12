@@ -47,6 +47,12 @@
   </main>
   <footer><span class="brand footer-brand">everyday<span>®</span></span><p>A little more considered.</p><span>Made for your everyday.</span></footer>
   <div id="toast" class="toast" role="status" hidden></div>
+  <dialog id="compare-dialog" class="auth-dialog compare-dialog" aria-labelledby="compare-title">
+    <button class="close-button" data-close="compare-dialog" aria-label="Close price comparison">×</button>
+    <p class="eyebrow">BOOK PRICE COMPARISON</p><h2 id="compare-title"></h2>
+    <div id="compare-content" aria-live="polite"></div>
+    <p class="muted">Books to Scrape is a demo site with sample prices. Store prices are in INR; source prices are in GBP.</p>
+  </dialog>
   <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-title">
     <button class="close-button" data-close="auth-dialog" aria-label="Close account dialog">×</button>
     <p class="eyebrow">YOUR EVERYDAY</p><h2 id="auth-title">Welcome back.</h2><p id="auth-description" class="muted">Sign in to keep your favorites together.</p>

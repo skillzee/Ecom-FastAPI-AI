@@ -34,7 +34,7 @@ class SampleCatalogTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 products = response.json()
         self.assertEqual(len(products), len(SAMPLE_PRODUCTS))
-        self.assertIn("Wireless Mouse", {item["name"] for item in products})
+        self.assertIn("A Light in the Attic", {item["name"] for item in products})
         self.assertTrue(any(not item["in_stock"] for item in products))
 
     def test_repeated_startup_preserves_ids_and_edited_prices_and_stock(self):
@@ -68,5 +68,19 @@ class SampleCatalogTests(unittest.TestCase):
             products = session.exec(select(Product)).all()
             self.assertEqual(len(products), len(SAMPLE_PRODUCTS) + 1)
             self.assertIn("Existing Product", {item.name for item in products})
-            mouse = next(item for item in products if item.name.strip().casefold() == "wireless mouse")
+            mouse = next(item for item in products if item.name == SAMPLE_PRODUCTS[6]["name"])
             self.assertEqual(mouse.price_paise, 50000)
+
+    def test_legacy_demo_product_keeps_id_and_price_when_renamed(self):
+        SQLModel.metadata.create_all(self.engine)
+        with Session(self.engine) as session:
+            legacy = Product(name="Classic Notebook", price_paise=32100, in_stock=False)
+            session.add(legacy)
+            session.commit()
+            legacy_id = legacy.id
+        create_db_and_tables()
+        with Session(self.engine) as session:
+            book = session.get(Product, legacy_id)
+            self.assertEqual(book.name, "A Light in the Attic")
+            self.assertEqual(book.price_paise, 32100)
+            self.assertFalse(book.in_stock)

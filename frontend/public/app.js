@@ -15,6 +15,7 @@ let checkoutSubmission = null;
 let orderBusy = false;
 let chatBusy = false;
 let chatHistory = [];
+let comparisonRequest = 0;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -141,7 +142,7 @@ function renderProducts() {
     const visual = element('div', `product-visual tone-${product.id % 4}`);
     visual.setAttribute('aria-hidden', 'true');
     visual.append(element('span', 'product-monogram', product.name.trim().slice(0, 1).toUpperCase()));
-    visual.append(element('span', 'product-label', 'EVERYDAY COLLECTION'));
+    visual.append(element('span', 'product-label', 'EVERYDAY BOOKS'));
     const details = element('div', 'product-details');
     const status = element('span', `product-stock ${product.in_stock ? '' : 'unavailable'}`, product.in_stock ? 'Available' : 'Out of stock');
     const heading = element('div', 'product-heading');
@@ -150,9 +151,58 @@ function renderProducts() {
     button.disabled = !product.in_stock || busy;
     button.setAttribute('aria-label', `Add ${product.name} to bag`);
     button.addEventListener('click', () => addProduct(product, button));
-    details.append(status, heading, button);
+    const compare = element('button', 'secondary-button compare-button', 'Compare price');
+    compare.setAttribute('aria-label', `Compare ${product.name} with Books to Scrape`);
+    compare.addEventListener('click', () => compareProduct(product));
+    details.append(status, heading, button, compare);
     card.append(visual, details);
     $('#product-grid').append(card);
+  }
+}
+
+async function compareProduct(product) {
+  const requestId = ++comparisonRequest;
+  const dialog = $('#compare-dialog');
+  const content = $('#compare-content');
+  $('#compare-title').textContent = product.name;
+  content.replaceChildren(element('p', 'muted', 'Checking Books to Scrape...'));
+  content.setAttribute('aria-busy', 'true');
+  if (!dialog.open) dialog.showModal();
+  try {
+    const result = await request(`/products/${product.id}/compare`);
+    if (requestId !== comparisonRequest) return;
+    const table = element('table', 'comparison-table');
+    const head = element('thead');
+    const header = element('tr');
+    for (const label of ['Store', 'Price', 'Availability']) header.append(element('th', '', label));
+    head.append(header);
+    const body = element('tbody');
+    for (const [label, offer] of [['Everyday', result.store], ['Books to Scrape', result.external]]) {
+      const row = element('tr');
+      const price = offer ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: offer.currency }).format(offer.price_minor / 100) + ` ${offer.currency}` : 'No match';
+      row.append(element('th', '', label), element('td', '', price), element('td', '', offer ? (offer.in_stock ? 'In stock' : 'Out of stock') : 'Unavailable'));
+      body.append(row);
+    }
+    table.append(head, body);
+    content.replaceChildren(table, element('p', 'muted', result.message));
+    content.append(element('p', 'muted', `Source checked: ${new Date(result.checked_at).toLocaleString()}. Results are cached for up to five minutes.`));
+    if (result.external) {
+      const url = new URL(result.external.source_url);
+      if (url.protocol === 'https:' && url.hostname === 'books.toscrape.com') {
+        const link = element('a', 'secondary-button', 'View on Books to Scrape');
+        link.href = url.href;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        content.append(link);
+      }
+    }
+  } catch (error) {
+    if (requestId !== comparisonRequest) return;
+    const retry = element('button', 'secondary-button', 'Try again');
+    retry.addEventListener('click', () => compareProduct(product));
+    content.replaceChildren(element('p', 'error-message', errorText(error)), retry);
+  } finally {
+    if (requestId === comparisonRequest) content.setAttribute('aria-busy', 'false');
   }
 }
 

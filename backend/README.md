@@ -89,12 +89,26 @@ secret. They do not change `ecommerce.db` or make model-provider requests.
 ## Storefront
 
 On backend startup, missing sample products are added automatically to SQLite.
-The 12-product demo catalog includes stationery, mugs, bottles, bags, clothing,
-electronics, lighting, fitness, and candles, plus an out-of-stock speaker.
+The 12-product demo catalog contains books matching the first listing page of
+Books to Scrape, including one out-of-stock store book.
 Sample names and demo prices are in `app/services/sample_catalog.py`.
 Restarting does not duplicate matching names (case-insensitive) or overwrite
-existing prices, availability, IDs, or custom products. Deleted sample products
+existing prices, availability, IDs, or custom products. Old demo titles are
+renamed to books in place, preserving cart references. Deleted sample products
 are added again on the next startup.
+
+Every product card has a **Compare price** button. `GET /products/{id}/compare`
+uses LangChain `WebBaseLoader.scrape()` to fetch `https://books.toscrape.com/`
+and Beautiful Soup selectors to extract full titles, GBP prices, availability,
+and source links. Matching uses the exact title, ignoring case and surrounding
+whitespace. Only the first page is searched; all seeded titles are on that page.
+Successful source reads are cached for five minutes with an eight-second request
+timeout. Missing titles return `external: null`; source failures return `503`
+and the storefront offers a retry. The source URL is fixed by the server.
+
+Store prices remain integer INR paise. Scraped prices are integer GBP pence.
+The comparison shows both currencies without converting them or calculating
+savings. Books to Scrape prices are demo data. No scraping runs during startup.
 
 The local frontend is in `../frontend`. With this backend running on port 8000,
 run `npm.cmd run dev` from `frontend` and open `http://127.0.0.1:5173`.

@@ -45,6 +45,11 @@ async function storefront(t) {
     if (expires && options.headers?.Authorization) {
       status = 401; data = { detail: 'Could not validate credentials' };
     } else if (url === '/api/products') data = products;
+    else if (url.endsWith('/compare')) data = {
+      store: { price_minor: 12550, currency: 'INR', in_stock: true },
+      external: { price_minor: 5177, currency: 'GBP', in_stock: true, source_url: 'https://books.toscrape.com/catalogue/book/index.html' },
+      checked_at: '2026-10-12T10:00:00Z', message: 'Prices use different currencies; no conversion is applied.',
+    };
     else if (url === '/api/auth/register') { status = 201; data = { id: 1, email: body.email, full_name: body.full_name }; }
     else if (url === '/api/auth/login') {
       if (body.password === 'wrong-password') { status = 401; data = { detail: 'Incorrect email or password' }; }
@@ -137,6 +142,37 @@ test('catalog search, stock filtering, sorting, and safe product rendering', asy
   assert.equal(ui.document.querySelectorAll('.product-card').length, 2);
   ui.input('#sort', 'price-low');
   assert.equal(ui.select('.product-heading h3').textContent, 'Pen');
+});
+
+test('guests can compare store and source prices with explicit currencies', async (t) => {
+  const ui = await storefront(t);
+  ui.select('.compare-button').click();
+  await settled();
+  assert.equal(ui.select('#compare-dialog').open, true);
+  assert.match(ui.select('#compare-content').textContent, /INR/);
+  assert.match(ui.select('#compare-content').textContent, /GBP/);
+  assert.match(ui.select('#compare-content').textContent, /51\.77/);
+  assert.equal(ui.select('#compare-content a').hostname, 'books.toscrape.com');
+  assert.ok(ui.calls.some((call) => call.url === '/api/products/1/compare'));
+});
+
+test('comparison failure allows retry and missing titles show no match', async (t) => {
+  const ui = await storefront(t);
+  const originalFetch = ui.window.fetch;
+  ui.window.fetch = async (url, options) => url.endsWith('/compare')
+    ? { status: 503, ok: false, json: async () => ({ detail: 'Source unavailable' }) }
+    : originalFetch(url, options);
+  ui.select('.compare-button').click();
+  await settled();
+  assert.match(ui.select('#compare-content').textContent, /Source unavailable/);
+  ui.window.fetch = async () => ({ status: 200, ok: true, json: async () => ({
+    store: { price_minor: 12550, currency: 'INR', in_stock: true }, external: null,
+    checked_at: '2026-10-12T10:00:00Z', message: 'No exact title match.',
+  }) });
+  ui.select('#compare-content button').click();
+  await settled();
+  assert.match(ui.select('#compare-content').textContent, /No match/);
+  assert.equal(ui.select('#compare-content a'), null);
 });
 
 test('sign-in errors stay visible and unauthenticated add opens account form', async (t) => {

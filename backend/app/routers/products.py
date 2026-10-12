@@ -6,6 +6,7 @@ from sqlmodel import Session
 from app.database import get_session
 from app.schemas.product import Product, ProductCreate
 from app.services import products as product_service
+from app.services.book_scraper import BookScrapeError, compare_book
 
 
 router = APIRouter(prefix="/products", tags=["Products"])
@@ -16,6 +17,17 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @router.get("", response_model=list[Product])
 def list_products(session: SessionDep):
     return product_service.list_products(session)
+
+
+@router.get("/{product_id}/compare")
+def compare_product(product_id: int, session: SessionDep):
+    product = product_service.get_product(session, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    try:
+        return compare_book(product)
+    except BookScrapeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/{product_id}", response_model=Product)
