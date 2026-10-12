@@ -8,4 +8,5 @@ __pycache__/
 backend/ecommerce.db*
 node_modules/
 backend/faiss_index/
+tmp/project-artifacts/
 
