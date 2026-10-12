@@ -518,6 +518,19 @@ function appendChat(role, content) {
   $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
 }
 
+function appendChatProducts(results = []) {
+  for (const product of results.slice(0, 6)) {
+    const card = element('article', 'chat-product-card');
+    card.append(element('h3', '', product.name), element('p', 'muted', `${money(product.price_paise)} · ${product.in_stock ? 'In stock' : 'Out of stock'}`));
+    const compare = element('button', 'secondary-button', 'Compare price');
+    compare.setAttribute('aria-label', `Compare ${product.name} with Books to Scrape`);
+    compare.addEventListener('click', () => compareProduct(product));
+    card.append(compare);
+    $('#chat-messages').append(card);
+  }
+  $('#chat-messages').scrollTop = $('#chat-messages').scrollHeight;
+}
+
 function resetChat() {
   chatHistory = [];
   $('#chat-messages').replaceChildren(element('p', 'chat-bubble assistant', 'A fresh start. What would you like to find?'));
@@ -545,6 +558,7 @@ async function sendChat(message) {
     if (sessionToken !== token || !user) return;
     thinking.remove();
     appendChat('assistant', response.reply);
+    appendChatProducts(response.products);
     chatHistory.push({ role: 'user', content: message }, { role: 'assistant', content: response.reply.slice(0, 2000) });
     chatHistory = chatHistory.slice(-12);
   } catch (error) {

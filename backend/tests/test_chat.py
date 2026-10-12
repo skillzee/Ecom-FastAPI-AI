@@ -13,9 +13,11 @@ from app.database import get_session
 from app.main import app
 from app.models.user import User
 from app.models.product import Product
-from app.ai.tools import make_add_to_cart_tool
+from app.models.order import Order, OrderItem
+from app.ai.tools import make_add_to_cart_tool, make_order_tools, compare_product_price, show_products
 from app.services.cart import get_cart
-from app.schemas.chat import ChatMessage
+from app.schemas.chat import ChatMessage, ChatResponse
+from app.services.book_scraper import BookScrapeError
 from app.services.chat import generate_reply
 
 
@@ -53,13 +55,13 @@ class ChatTests(unittest.TestCase):
                 reply.assert_not_awaited()
 
     def test_chat_returns_reply_and_passes_bounded_history(self):
-        with patch("app.routers.chat.generate_reply", new_callable=AsyncMock, return_value="Try the notebook.") as reply:
+        with patch("app.routers.chat.generate_reply", new_callable=AsyncMock, return_value=ChatResponse(reply="Try the notebook.")) as reply:
             response = self.client.post("/chat", json={
                 "message": "What does it cost?",
                 "history": [{"role": "user", "content": "Show notebooks"}, {"role": "assistant", "content": "Try the notebook."}],
             })
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {"reply": "Try the notebook."})
+            self.assertEqual(response.json(), {"reply": "Try the notebook.", "products": []})
             self.assertEqual(reply.call_args.args[1][0].content, "Show notebooks")
             self.assertEqual(reply.call_args.kwargs["user_id"], 1)
 
@@ -139,12 +141,97 @@ class ChatTests(unittest.TestCase):
             self.assertEqual(get_cart(session, 1).items[0].quantity, 2)
             self.assertEqual(get_cart(session, 2).items, [])
 
+    def test_agent_compares_requested_product_and_returns_product_cards(self):
+        self.seed_products()
+        class ToolCallingModel(FakeMessagesListChatModel):
+            def bind_tools(self, tools, **kwargs):
+                self.registered_tools = [tool.name for tool in tools]
+                return self
+            registered_tools: list[str] = []
+        model = ToolCallingModel(responses=[
+            AIMessage(content="", tool_calls=[{"name": "list_products", "args": {}, "id": "list"}]),
+            AIMessage(content="", tool_calls=[{"name": "compare_product_price", "args": {"product_id": 1}, "id": "compare"}]),
+            AIMessage(content="", tool_calls=[{"name": "show_products", "args": {"product_ids": [1]}, "id": "show"}]),
+            AIMessage(content="Everyday: INR 125.50; Books to Scrape: GBP 51.77. No currency conversion applied."),
+        ])
+        with patch("app.ai.tools.engine", self.engine), patch("app.ai.agent.get_chat_model", return_value=model), patch("app.ai.tools.compare_book", return_value={"store": {"currency": "INR", "price_minor": 12550}, "external": {"currency": "GBP", "price_minor": 5177}}) as compare:
+            response = self.client.post("/chat", json={"message": "Compare the price of Notebook"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("compare_product_price", model.registered_tools)
+        compare.assert_called_once()
+        self.assertEqual(compare.call_args.args[0].id, 1)
+        self.assertEqual([item["id"] for item in response.json()["products"]], [1])
+
+    def test_product_cards_do_not_scrape_and_comparison_errors_are_reported(self):
+        self.seed_products()
+        with patch("app.ai.tools.engine", self.engine), patch("app.ai.tools.compare_book", side_effect=BookScrapeError("Source unavailable")) as compare:
+            self.assertEqual(len(show_products.invoke({"product_ids": [1, 1, 2]})["products"]), 2)
+            self.assertFalse(show_products.invoke({"product_ids": [999]})["success"])
+            compare.assert_not_called()
+            self.assertFalse(compare_product_price.invoke({"product_id": 999})["success"])
+            compare.assert_not_called()
+            result = compare_product_price.invoke({"product_id": 1})
+            self.assertFalse(result["success"])
+            self.assertEqual(result["error"], "Source unavailable")
+
+    def seed_orders(self):
+        self.seed_products()
+        with Session(self.engine) as session:
+            for oid, uid in [(1, 1), (2, 2), (3, 1)]:
+                session.add(Order(id=oid, user_id=uid, checkout_key=f"key-{oid}",
+                                  request_hash="unused", total_paise=25000,
+                                  full_name="Shopper", address=f"Private street {uid}",
+                                  city="Pune", postal_code="411001", country="India"))
+                session.add(OrderItem(order_id=oid, product_id=1, name="Original book title",
+                                      quantity=2, unit_price_paise=12500, subtotal_paise=25000))
+            session.commit()
+
+    def test_order_tools_are_user_bound_paginated_and_preserve_snapshots(self):
+        self.seed_orders()
+        with patch("app.ai.tools.engine", self.engine):
+            listing, detail = make_order_tools(1)
+            for tool in [listing, detail]:
+                self.assertNotIn("user_id", tool.args)
+            first = listing.invoke({"limit": 1})
+            self.assertEqual([order["id"] for order in first["orders"]], [3])
+            self.assertTrue(first["has_more"])
+            second = listing.invoke({"limit": 1, "offset": first["next_offset"]})
+            self.assertEqual([order["id"] for order in second["orders"]], [1])
+            self.assertFalse(second["has_more"])
+            self.assertNotIn("shipping", first["orders"][0])
+            order = detail.invoke({"order_id": 1})["order"]
+            self.assertEqual(order["items"][0]["name"], "Original book title")
+            self.assertEqual(order["items"][0]["unit_price_paise"], 12500)
+            self.assertEqual(order["shipping"]["address"], "Private street 1")
+            self.assertEqual(order["status"], "pending_payment")
+            self.assertEqual(detail.invoke({"order_id": 2}), detail.invoke({"order_id": 999}))
+            self.assertFalse(detail.invoke({"order_id": 0})["success"])
+            for args in [{"limit": 0}, {"limit": 51}, {"offset": -1}]:
+                self.assertFalse(listing.invoke(args)["success"])
+            self.assertEqual(make_order_tools(999)[0].invoke({})["orders"], [])
+
+    def test_chat_agent_can_fetch_orders_through_registered_tools(self):
+        self.seed_orders()
+        class OrderModel(FakeMessagesListChatModel):
+            def bind_tools(self, tools, **kwargs):
+                return self
+        model = OrderModel(responses=[
+            AIMessage(content="", tool_calls=[{"name": "list_my_orders", "args": {}, "id": "orders"}]),
+            AIMessage(content="", tool_calls=[{"name": "get_my_order", "args": {"order_id": 3}, "id": "detail"}]),
+            AIMessage(content="Your latest order is #3: 2 Original book title books, INR 250.00, awaiting payment."),
+        ])
+        with patch("app.ai.tools.engine", self.engine), patch("app.ai.agent.get_chat_model", return_value=model):
+            response = self.client.post("/chat", json={"message": "What did I order most recently?"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("#3", response.json()["reply"])
+        self.assertEqual(response.json()["products"], [])
+
 
 class ChatServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_agent_receives_history_before_latest_message(self):
         agent = SimpleNamespace(ainvoke=AsyncMock(return_value={"messages": [SimpleNamespace(content="A reply")]}))
         with patch("app.services.chat.get_shopping_agent", return_value=agent):
-            self.assertEqual(await generate_reply("Latest", [ChatMessage(role="user", content="Earlier")], user_id=1), "A reply")
+            self.assertEqual((await generate_reply("Latest", [ChatMessage(role="user", content="Earlier")], user_id=1)).reply, "A reply")
         self.assertEqual(agent.ainvoke.call_args.args[0]["messages"], [
             {"role": "user", "content": "Earlier"}, {"role": "user", "content": "Latest"},
         ])

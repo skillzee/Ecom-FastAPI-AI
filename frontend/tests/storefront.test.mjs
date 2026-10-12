@@ -62,7 +62,7 @@ async function storefront(t) {
         items.push({ id: 1, product_id: 1, quantity: 2, product, subtotal_paise: product.price_paise * 2 });
       }
       if (chatFailure) { status = 503; data = { detail: 'The shopping assistant is temporarily unavailable.' }; }
-      else data = { reply: 'Try the notebook. <img src=x onerror=alert(1)>' };
+      else data = { reply: 'Try the notebook. <img src=x onerror=alert(1)>', products: [products[0]] };
     } else if (url === '/api/orders' && method === 'POST') {
       if (checkoutConflict) { status = 409; data = { detail: 'Your bag or prices changed. Review your bag and try again' }; }
       else {
@@ -318,6 +318,25 @@ test('chat provider failure is visible and preserves the message for retry', asy
   assert.equal(ui.select('#chat-input').value, 'Find a notebook');
   assert.equal(ui.select('#chat-send').disabled, false);
   assert.equal(ui.document.querySelectorAll('.thinking').length, 0);
+});
+
+test('agent product results offer comparison without automatically scraping', async (t) => {
+  const ui = await storefront(t);
+  await ui.login();
+  ui.select('#chat-launcher').click();
+  ui.input('#chat-input', 'Find a notebook');
+  ui.select('#chat-form').dispatchEvent(new ui.window.Event('submit', { bubbles: true, cancelable: true }));
+  await settled();
+  assert.equal(ui.document.querySelectorAll('.chat-product-card').length, 1);
+  assert.match(ui.select('.chat-product-card h3').textContent, /Notebook/);
+  assert.equal(ui.calls.some((call) => call.url.endsWith('/compare')), false);
+  ui.select('.chat-product-card button').click();
+  await settled();
+  assert.equal(ui.select('#compare-dialog').open, true);
+  assert.match(ui.select('#compare-content').textContent, /GBP/);
+  ui.select('[data-close="compare-dialog"]').click();
+  ui.select('#chat-clear').click();
+  assert.equal(ui.document.querySelectorAll('.chat-product-card').length, 0);
 });
 
 test('guests are asked to sign in and cannot submit chat requests', async (t) => {

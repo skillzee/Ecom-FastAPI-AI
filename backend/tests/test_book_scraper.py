@@ -48,6 +48,20 @@ class BookScraperTests(unittest.TestCase):
         self.assertIsNone(scraper.compare_book(Product(id=2, name="Unmatched", price_paise=100))["external"])
 
     @patch.object(scraper, "WebBaseLoader")
+    def test_cache_refreshes_on_first_request_after_expiry(self, loader):
+        loader.return_value.scrape.return_value = BeautifulSoup(HTML, "html.parser")
+        with patch.object(scraper, "monotonic", return_value=100):
+            scraper.load_books()
+        with patch.object(scraper, "monotonic", return_value=399):
+            scraper.load_books()
+        self.assertEqual(loader.return_value.scrape.call_count, 1)
+        loader.return_value.scrape.return_value = BeautifulSoup(HTML.replace("51.77", "40.00"), "html.parser")
+        with patch.object(scraper, "monotonic", return_value=400):
+            books, _ = scraper.load_books()
+        self.assertEqual(loader.return_value.scrape.call_count, 2)
+        self.assertEqual(books[0]["price_minor"], 4000)
+
+    @patch.object(scraper, "WebBaseLoader")
     def test_failures_are_not_cached(self, loader):
         loader.return_value.scrape.side_effect = TimeoutError()
         for _ in range(2):

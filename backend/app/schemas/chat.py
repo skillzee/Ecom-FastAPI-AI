@@ -1,6 +1,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.schemas.product import Product
 
 
 class ChatMessage(BaseModel):
@@ -19,3 +20,4 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    products: list[Product] = Field(default_factory=list, max_length=6)

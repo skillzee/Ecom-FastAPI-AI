@@ -110,6 +110,24 @@ Store prices remain integer INR paise. Scraped prices are integer GBP pence.
 The comparison shows both currencies without converting them or calculating
 savings. Books to Scrape prices are demo data. No scraping runs during startup.
 
+The chat agent can call `compare_product_price` after resolving a requested
+product with `list_products`. For searches and recommendations, `show_products`
+returns selected catalog products as cards in the chat response's `products`
+array. Each card offers **Compare price**. Showing a card does not scrape;
+an explicit comparison request or a button click does. Both paths use the same
+scraper and per-process cache. Store prices are read from SQLite each time;
+only external listings are cached. The cache is cleared on server restart,
+refreshes on the first comparison after expiry, and never caches failures.
+
+The shopping assistant also has read-only `list_my_orders` and `get_my_order`
+tools bound to the authenticated user. It can answer questions about order
+history, items, quantities, saved prices, totals, status and shipping addresses.
+History is paginated (20 orders by default, maximum 50 per call). Specific order
+lookups require both the order ID and the bound user ID in the database query;
+another user's order and a nonexistent order return the same error. Order
+information is read fresh from SQLite and uses saved purchase snapshots.
+These tools cannot cancel orders, issue refunds, track shipments or take payment.
+
 The local frontend is in `../frontend`. With this backend running on port 8000,
 run `npm.cmd run dev` from `frontend` and open `http://127.0.0.1:5173`.
 See [the frontend README](../frontend/README.md) for configuration and tests.

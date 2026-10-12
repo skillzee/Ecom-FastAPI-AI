@@ -27,10 +27,11 @@ def serialize_order(session: Session, order: Order) -> OrderRead:
     )
 
 
-def list_orders(session: Session, user_id: int) -> list[OrderRead]:
-    orders = session.exec(
-        select(Order).where(Order.user_id == user_id).order_by(Order.id.desc())
-    ).all()
+def list_orders(session: Session, user_id: int, *, limit: int | None = None, offset: int = 0) -> list[OrderRead]:
+    statement = select(Order).where(Order.user_id == user_id).order_by(Order.id.desc()).offset(offset)
+    if limit is not None:
+        statement = statement.limit(limit)
+    orders = session.exec(statement).all()
     return [serialize_order(session, order) for order in orders]
 
 
